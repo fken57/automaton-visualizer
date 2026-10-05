@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f6f7f2" />
+  <meta name="description" content="有限オートマトンの図・3つ組記法・矢印記法を相互編集し、PNGに保存。DFA・NFAの動作も確認できます。" />
+  <title>Automaton Studio — 有限オートマトン Visualizer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%232c5b45'/%3E%3Ccircle cx='28' cy='24' r='12' fill='none' stroke='white' stroke-width='2'/%3E%3Ccircle cx='28' cy='24' r='8' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M5 24h10m-4-4 4 4-4 4' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./src/style.css" />
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a href="./" class="brand" aria-label="Automaton Studio ホーム"><span class="brand-symbol">→◎</span><span>automaton<span class="brand-light"> studio</span><small>FINITE AUTOMATON VISUALIZER</small></span></a>
+    <div class="header-actions"><span id="saved" class="saved"><i></i>ブラウザに自動保存</span><button id="help-button" class="button ghost">使い方 <span class="key">?</span></button><button id="export-png" class="button primary"><span>↓</span> PNGで保存</button></div>
+  </header>
+  <main>
+    <div class="page-heading"><div><div class="eyebrow">THINK IN STATES. CREATE IN SECONDS.</div><h1>オートマトンを、かたちに。</h1><p>図と記法を行き来して、アイデアをそのまま設計。</p></div><div class="project-actions"><button class="button" id="import-json">↑ 読み込む</button><button class="button" id="export-json">↓ JSON</button><input id="file-input" type="file" accept=".json,application/json" hidden /></div></div>
+    <div class="workspace">
+      <aside class="panel definition-panel">
+        <div class="panel-heading"><div><span class="section-number">01</span><h2>オートマトンの定義</h2></div><span class="mini-symbol">M</span></div>
+        <div class="panel-body">
+          <label class="field">名前<input id="project-title" maxlength="80" /></label>
+          <label class="field">状態集合 <span class="math">K</span><input id="states-input" placeholder="S, A, B, #" /><small>カンマまたはスペースで区切る</small></label>
+          <label class="field">終端記号 <span class="math">T</span><input id="alphabet-input" placeholder="a, b" /><small>入力アルファベット。ε は空語遷移に使用</small></label>
+          <label class="field">出発状態 <span class="math">q₀</span><select id="start-input"></select></label>
+          <div class="field"><span>終了状態 <span class="math">F</span></span><div id="final-input" class="state-chips"></div><small>複数選択できます。図では二重丸で表示</small></div>
+          <div class="divider"></div>
+          <div class="subheading"><h3>遷移規則 <span class="math">t</span></h3><span id="transition-count" class="count"></span></div>
+          <div class="transition-labels"><span>遷移元</span><span>記号</span><span>遷移先</span><span></span></div>
+          <div id="transition-list" class="transition-list"></div>
+          <button id="add-transition" class="button dashed full">＋ 遷移を追加</button>
+        </div>
+      </aside>
+      <section class="center-column">
+        <div class="panel canvas-panel">
+          <div class="panel-heading canvas-heading"><div><span class="section-number">02</span><h2>状態遷移図</h2><span id="type-badge" class="badge">NFA</span></div><div class="history-actions"><button id="undo" class="icon-button" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button><button id="redo" class="icon-button" title="やり直す (Ctrl+Shift+Z)" aria-label="やり直す">↷</button></div></div>
+          <div class="canvas-toolbar"><div class="tools" role="group" aria-label="図の編集ツール"><button class="tool active" data-tool="move" title="選択・移動"><span>↖</span> 移動</button><button class="tool" data-tool="state"><span>⊕</span> 状態</button><button class="tool" data-tool="edge"><span>↗</span> 遷移</button></div><button id="auto-layout" class="button compact">▦ 自動配置</button></div>
+          <div class="canvas-area"><svg id="graph" viewBox="0 0 800 520" aria-label="オートマトン状態遷移図"></svg><div id="tool-hint" class="canvas-hint">状態をドラッグして移動 · 空白をダブルクリックして追加</div><div id="graph-stats" class="graph-stats"></div></div>
+          <div id="selection-panel" class="selection-panel"></div>
+          <div class="canvas-footer"><div><span>→○ 出発状態</span><span>◎ 終了状態</span></div><button id="preview-png" class="text-button" hidden>前回のPNGを見る ↗</button></div>
+        </div>
+        <section class="panel simulation-panel"><div class="panel-heading"><div><span class="section-number">03</span><h2>動作を試す</h2></div><span class="eyebrow subtle">SIMULATE</span></div><div class="simulation-body"><form id="simulation-form" class="simulation-form"><label class="sr-only" for="word-input">入力する語</label><input id="word-input" placeholder="入力する語（例: aab）" value="aa" /><button type="submit" class="button primary">▶ 実行</button></form><div id="simulation-output" class="simulation-output"><span class="muted">語を入力して、状態の変化と受理結果を確認できます。</span><small>空欄は空語 ε。複数文字の記号はスペースで区切ります。</small></div></div></section>
+      </section>
+      <aside class="right-column">
+        <section class="panel notation-panel"><div class="panel-heading"><div><span class="section-number">04</span><h2>記法エディタ</h2></div><span class="sync-dot" title="同じオートマトンを共有">↔ 同期</span></div><div class="panel-body"><div class="tabs" role="tablist" aria-label="記法"><button class="tab active" data-notation="triples" role="tab" aria-selected="true">3つ組記法</button><button class="tab" data-notation="arrows" role="tab" aria-selected="false">矢印記法</button></div><div id="notation-description" class="notation-description">（遷移元, 入力記号, 遷移先）</div><label class="sr-only" for="notation-input">遷移規則の記法</label><textarea id="notation-input" spellcheck="false" wrap="off"></textarea><div class="notation-meta"><span id="notation-status">図と同期しています</span><button id="copy-notation" class="text-button">コピー</button></div><div id="notation-error" class="inline-error" role="alert"></div><button id="apply-notation" class="button primary full">↔ 図に反映</button><p class="note">出発・終了状態は3つ組に含まれません。左の定義欄で指定した情報は保持されます。</p></div></section>
+        <section class="panel formula-panel"><div class="small-heading">形式的な定義</div><div class="formula">M = (K, T, t, q₀, F)</div><div id="formal-definition" class="formal-definition"></div></section>
+        <section class="example-card"><span class="eyebrow">A LITTLE INSPIRATION</span><h3>例からはじめる</h3><p>講義のオートマトンを、手元で動かそう。</p><label class="sr-only" for="example-select">サンプルを選択</label><select id="example-select"><option value="nfa">講義の NFA · aa⁺ または ab⁺</option><option value="dfa">講義の DFA · a(ba)*</option><option value="binary">DFA · 1 の個数が偶数</option><option value="empty">空のオートマトン</option></select><button id="load-example" class="button full">この例を読み込む ↗</button></section>
+      </aside>
+    </div>
+    <footer class="page-footer"><span><strong>automaton studio</strong> · 小さな状態から、大きな理解へ。</span><span>DFA / NFA / ε遷移に対応</span></footer>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="help-dialog"><div class="dialog-heading"><span class="eyebrow">QUICK GUIDE</span><button id="close-help" class="icon-button" aria-label="使い方を閉じる">×</button></div><h2>描く。書く。確かめる。</h2><p>すべての表示は、同じオートマトンにつながっています。</p><ol><li><strong>左側で定義</strong>状態名、終端記号、出発状態、終了状態、遷移を指定します。</li><li><strong>中央で編集</strong>状態をドラッグして移動。「状態」ツールで空白をクリックして追加。「遷移」ツールで遷移元→遷移先をクリックします。自己遷移は同じ状態を2回クリック。</li><li><strong>右側で記法を編集</strong><code>(S,a,A)</code> または <code>S -a-> A</code> を入力し「図に反映」。新しい状態・記号は自動追加します。</li><li><strong>動作を確認</strong>入力語を実行し、各ステップをクリックして状態を確認。NFAでは複数の状態を同時に追跡します。</li><li><strong>そのまま書き出す</strong>「PNGで保存」で1600×1040の白背景画像を保存。編集を再開するにはJSONで保存します。</li></ol><p class="note">Ctrl / ⌘ + Z で元に戻す、Shift + Ctrl / ⌘ + Z でやり直し。選択中の状態・遷移はDeleteで削除。εは空語遷移、#は通常の状態名です。</p><p class="note">参考：autolang第3回.pdf のDFA・NFAと3つ組記法。資料11ページの自己遷移 (B,b,b) は、9・12ページの図に合わせて (B,b,B) としています。講義と同様、DFAの未定義遷移も許容します。</p></dialog>
+  <dialog id="edge-dialog"><form id="edge-form"><div class="dialog-heading"><span class="eyebrow">NEW TRANSITION</span><button type="button" id="cancel-edge" class="icon-button" aria-label="遷移追加を閉じる">×</button></div><h2 id="edge-title">遷移を追加</h2><label class="field">入力記号<input id="edge-symbol" maxlength="32" required list="symbol-options" autocomplete="off" /><datalist id="symbol-options"></datalist><small>ε で空語遷移。新しい記号は自動追加します。</small></label><button class="button primary full" type="submit">遷移を追加</button></form></dialog>
+  <dialog id="confirm-dialog"><h2>サンプルを読み込みますか？</h2><p>編集中の図を置き換えます。元に戻す操作で復元できます。</p><div class="dialog-actions"><button id="cancel-example" class="button">キャンセル</button><button id="confirm-example" class="button primary">読み込む</button></div></dialog>
+  <dialog id="png-dialog"><div class="dialog-heading"><span class="eyebrow">PNG PREVIEW · 1600 × 1040</span><button id="close-png" class="icon-button" aria-label="PNGプレビューを閉じる">×</button></div><h2>書き出したオートマトン</h2><img id="png-preview" alt="前回書き出したPNGのプレビュー" /><p class="note">白背景・出発矢印・終了状態の二重丸を含むPNGです。</p></dialog>
+</body>
+</html>

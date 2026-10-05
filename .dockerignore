@@ -1,0 +1,6 @@
+.git
+tmp
+tests
+node_modules
+dist
+output
