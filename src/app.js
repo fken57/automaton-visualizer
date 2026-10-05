@@ -1,12 +1,19 @@
 import { EPSILON, tokens, validToken, validateModel, examples, layout, applyTransitions, parseNotation, formatNotation, automatonType, simulate, escapeXML as e } from './model.js';
-import { graphContent, exportSVG } from './graph.js';
+import { graphContent, exportSVG, exportCollectionSVG } from './graph.js';
+import { LIBRARY_SCHEMA, MAX_AUTOMATA, createLibrary, newEntry, validateLibrary, updateEntry } from './library.js';
 
 const $ = id => document.getElementById(id);
 const clone = value => structuredClone(value);
 const storageKey = 'automaton-studio-v1';
+const libraryKey = 'automaton-studio-library-v1';
 let model = clone(examples.nfa);
 let storageOK = true;
 try { const saved = localStorage.getItem(storageKey); if (saved) model = validateModel(JSON.parse(saved)); } catch { storageOK = false; }
+let library = createLibrary(model);
+try { const saved = localStorage.getItem(libraryKey); if (saved) library = validateLibrary(JSON.parse(saved)); } catch { storageOK = false; }
+model = clone(library.items.find(item => item.id === library.activeId).model);
+const histories = new Map();
+let recentlyDeleted = null;
 let past = [], future = [], selected = null, tool = 'move', edgeSource = null, edgeTarget = null;
 let notationKind = 'triples', drafts = {}, simulation = null, stepIndex = 0, drag = null;
 let toastTimer;
@@ -16,7 +23,8 @@ function toast(message, error = false) {
 }
 function safely(action) { try { action(); } catch (error) { toast(error.message, true); } }
 function persist() {
-  try { localStorage.setItem(storageKey, JSON.stringify(model)); storageOK = true; } catch { storageOK = false; }
+  library = updateEntry(library, library.activeId, model);
+  try { localStorage.setItem(libraryKey, JSON.stringify(library)); storageOK = true; } catch { storageOK = false; }
   $('saved').innerHTML = storageOK ? '<i></i>ブラウザに自動保存' : '<i class="warning"></i>自動保存不可 · JSONで保存';
 }
 function commit(next) {
@@ -31,6 +39,36 @@ function travel(direction) {
   target.push(clone(model)); model = source.pop(); selected = null; edgeSource = null; simulation = null; persist(); render();
 }
 function optionList(values, chosen) { return values.map(id => `<option value="${e(id)}"${id === chosen ? ' selected' : ''}>${e(id)}</option>`).join(''); }
+function renderLibrary() {
+  const list = $('automaton-list');
+  const ids = library.items.map(item => item.id);
+  if (JSON.stringify([...list.children].map(b => b.dataset.automaton)) !== JSON.stringify(ids)) {
+    list.innerHTML = ids.map(id => `<button class="automaton-tab" data-automaton="${id}" role="tab"></button>`).join('');
+  }
+  for (const button of list.children) {
+    const item = library.items.find(item => item.id === button.dataset.automaton), active = item.id === library.activeId;
+    const title = active ? model.title : item.model.title;
+    button.textContent = title; button.title = title; button.classList.toggle('active', active); button.setAttribute('aria-selected', active);
+  }
+  $('library-count').textContent = `${library.items.length} 個`;
+  $('delete-automaton').disabled = library.items.length === 1;
+  $('restore-automaton').hidden = !recentlyDeleted;
+  $('add-automaton').disabled = $('duplicate-automaton').disabled = library.items.length >= MAX_AUTOMATA;
+}
+function switchAutomaton(id) {
+  if (id === library.activeId) return;
+  const entry = library.items.find(item => item.id === id); if (!entry) return;
+  persist(); histories.set(library.activeId, { past, future, drafts });
+  library.activeId = id; model = clone(entry.model);
+  const history = histories.get(id) || { past: [], future: [], drafts: {} };
+  past = history.past; future = history.future; drafts = history.drafts;
+  selected = null; simulation = null; edgeSource = null; drag = null;
+  persist(); render(); setTool('move');
+}
+function addAutomaton(source) {
+  if (library.items.length >= MAX_AUTOMATA) throw new Error('保存できるオートマトンは50個までです。');
+  persist(); const entry = newEntry(source); library.items.push(entry); switchAutomaton(entry.id);
+}
 function render() {
   if (selected?.state && !model.states.some(s => s.id === selected.state)) selected = null;
   if (selected?.edge >= model.transitions.length) selected = null;
@@ -47,7 +85,7 @@ function render() {
   $('undo').disabled = !past.length; $('redo').disabled = !future.length;
   $('graph-stats').textContent = `${ids.length} states / ${model.transitions.length} transitions`;
   $('formal-definition').innerHTML = `<div><span>K</span><code>{ ${ids.map(e).join(', ')} }</code></div><div><span>T</span><code>{ ${model.alphabet.map(e).join(', ')} }</code></div><div><span>q₀</span><code>${e(model.start)}</code></div><div><span>F</span><code>{ ${model.finals.map(e).join(', ')} }</code></div>`;
-  renderGraph(); renderSelection(); renderNotation(); renderSimulation();
+  renderLibrary(); renderGraph(); renderSelection(); renderNotation(); renderSimulation();
 }
 function renderGraph() {
   const active = simulation?.steps[stepIndex];
@@ -120,25 +158,28 @@ function renderSimulation() {
   output.innerHTML = `<div class="simulation-result"><span class="result-badge ${done ? simulation.accepted ? 'accepted' : 'rejected' : ''}">${done ? simulation.accepted ? '✓ 受理' : '× 不受理' : '遷移を確認中'}</span><span class="muted">${stepIndex} / ${simulation.symbols.length} 記号を消費</span><button class="text-button" id="reset-simulation">リセット</button></div><div class="step-list">${simulation.steps.map((s, i) => `<button class="step${i === stepIndex ? ' current' : ''}" data-step="${i}" aria-label="ステップ${i}: ${e(s.states.join(', ') || '到達状態なし')}"><small>${i === 0 ? 'START' : e(s.symbol)}</small><code>{${s.states.map(e).join(', ') || '∅'}}</code></button>${i < simulation.steps.length - 1 ? '<span class="step-arrow">→</span>' : ''}`).join('')}</div>`;
   $('reset-simulation').addEventListener('click', () => { simulation = null; renderSimulation(); renderGraph(); });
 }
-function download(blob, extension) {
-  const name = model.title.replace(/[<>:"/\\|?*\x00-\x1f]/gu, '_') || 'automaton';
+function download(blob, extension, label = model.title) {
+  const name = label.replace(/[<>:"/\\|?*\x00-\x1f]/gu, '_') || 'automaton';
   const a = document.createElement('a'), url = URL.createObjectURL(blob);
   a.href = url; a.download = `${name}.${extension}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
-async function savePNG() {
-  const button = $('export-png'); button.disabled = true;
+async function savePNG(batch = false) {
+  const button = batch ? $('export-all-png') : $('export-png'); button.disabled = true;
   try {
+    persist();
+    const output = batch ? exportCollectionSVG(library.items.map(item => item.model)) : { svg: exportSVG(model), width: 1600, height: 1040 };
     await document.fonts.ready;
-    const svg = exportSVG(model), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+    const url = URL.createObjectURL(new Blob([output.svg], { type: 'image/svg+xml;charset=utf-8' }));
     try {
       const img = new Image();
       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('図の画像変換に失敗しました。')); img.src = url; });
-      const canvas = document.createElement('canvas'); canvas.width = 1600; canvas.height = 1040;
+      const canvas = document.createElement('canvas'); canvas.width = output.width; canvas.height = output.height;
       canvas.getContext('2d').drawImage(img, 0, 0);
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('PNG保存に失敗しました。');
       $('png-preview').src = canvas.toDataURL('image/png'); $('preview-png').hidden = false;
-      download(blob, 'png'); toast('PNGを保存しました · 1600 × 1040 px');
+      $('png-dimensions').textContent = `PNG PREVIEW · ${output.width} × ${output.height}`;
+      download(blob, 'png', batch ? 'オートマトン一覧' : model.title); toast(`${batch ? `${library.items.length}個をまとめた` : ''}PNGを保存しました · ${output.width} × ${output.height} px`);
     } finally { URL.revokeObjectURL(url); }
   } catch (error) { toast(error.message, true); } finally { button.disabled = false; }
 }
@@ -245,16 +286,44 @@ $('word-input').addEventListener('input', () => { if (simulation) { simulation =
 $('load-example').addEventListener('click', () => $('confirm-dialog').showModal());
 $('cancel-example').addEventListener('click', () => $('confirm-dialog').close());
 $('confirm-example').addEventListener('click', () => { drafts = {}; selected = null; $('confirm-dialog').close(); commit(clone(examples[$('example-select').value])); render(); toast('サンプルを読み込みました。'); });
-$('export-png').addEventListener('click', savePNG);
+$('export-png').addEventListener('click', () => savePNG());
+$('export-all-png').addEventListener('click', () => savePNG(true));
+$('automaton-list').addEventListener('click', event => { const button = event.target.closest('[data-automaton]'); if (button) switchAutomaton(button.dataset.automaton); });
+$('add-automaton').addEventListener('click', () => safely(() => addAutomaton({ ...clone(examples.empty), title: `オートマトン ${library.items.length + 1}` })));
+$('duplicate-automaton').addEventListener('click', () => safely(() => addAutomaton({ ...clone(model), title: `${model.title}（コピー）`.slice(0, 80) })));
+$('delete-automaton').addEventListener('click', () => { $('delete-automaton-title').textContent = `「${model.title}」を一覧から削除しますか？`; $('delete-automaton-dialog').showModal(); });
+$('cancel-delete-automaton').addEventListener('click', () => $('delete-automaton-dialog').close());
+$('confirm-delete-automaton').addEventListener('click', () => {
+  if (library.items.length <= 1) return;
+  persist(); const id = library.activeId, index = library.items.findIndex(item => item.id === id);
+  recentlyDeleted = { entry: clone(library.items[index]), index };
+  switchAutomaton(library.items[index === 0 ? 1 : index - 1].id);
+  library.items = library.items.filter(item => item.id !== id); histories.delete(id); persist(); renderLibrary();
+  $('delete-automaton-dialog').close(); toast('一覧から削除しました。「削除を戻す」で復元できます。');
+});
+$('restore-automaton').addEventListener('click', () => safely(() => {
+  if (!recentlyDeleted) return;
+  if (library.items.length >= MAX_AUTOMATA) throw new Error('保存数が上限です。50個未満にしてください。');
+  const { entry, index } = recentlyDeleted; recentlyDeleted = null;
+  library.items.splice(index, 0, entry); switchAutomaton(entry.id); renderLibrary();
+}));
 $('preview-png').addEventListener('click', () => $('png-dialog').showModal());
 $('close-png').addEventListener('click', () => $('png-dialog').close());
-$('export-json').addEventListener('click', () => { download(new Blob([JSON.stringify(model, null, 2)], { type: 'application/json' }), 'json'); toast('編集用のJSONを保存しました。'); });
+$('export-json').addEventListener('click', () => { persist(); download(new Blob([JSON.stringify(library, null, 2)], { type: 'application/json' }), 'json', 'オートマトン一覧'); toast(`${library.items.length}個のオートマトンをJSONで保存しました。`); });
 $('import-json').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async event => {
   const file = event.target.files[0]; if (!file) return;
   try {
-    if (file.size > 2 * 1024 * 1024) throw new Error('JSONは2MB以下にしてください。');
-    const next = validateModel(JSON.parse(await file.text())); drafts = {}; selected = null; commit(next); render(); toast('JSONを読み込みました。');
+    if (file.size > 10 * 1024 * 1024) throw new Error('JSONは10MB以下にしてください。');
+    const input = JSON.parse(await file.text());
+    if (input.schema === LIBRARY_SCHEMA) {
+      const imported = validateLibrary(input);
+      if (library.items.length + imported.items.length > MAX_AUTOMATA) throw new Error('読み込み後の保存数が50個を超えます。');
+      persist(); const entries = imported.items.map(item => newEntry(item.model));
+      const activeIndex = imported.items.findIndex(item => item.id === imported.activeId);
+      library.items.push(...entries); switchAutomaton(entries[activeIndex].id);
+    } else addAutomaton(validateModel(input));
+    toast('JSONのオートマトンを一覧に追加しました。');
   } catch (error) { toast(`読み込み失敗: ${error.message}`, true); } finally { event.target.value = ''; }
 });
 $('help-button').addEventListener('click', () => $('help-dialog').showModal()); $('close-help').addEventListener('click', () => $('help-dialog').close());
