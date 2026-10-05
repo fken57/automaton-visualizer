@@ -2,6 +2,8 @@
 
 有限オートマトンをGUI・3つ組記法・矢印記法で相互編集し、図をワンクリックでPNG保存するWebアプリです。名前付きで複数のオートマトンを保存・切り替えでき、各名前と図を1枚のPNGにまとめられます。日本語UI、DFA / NFA / ε遷移、受理シミュレーション、ドラッグ編集、自動配置、Undo / Redo、JSON入出力、ブラウザへの自動保存に対応します。
 
+公開URL：[Automaton Studio](https://automaton-visualizer.trap.show/)
+
 ## 起動
 
 Node.js 22以上で実行します。外部パッケージのインストールは不要です。
@@ -35,6 +37,8 @@ NeoShowcaseのビルド方法を「Static (command) / 静的・コマンド」�
 | 成果物のパス | `dist` |
 | 作業ディレクトリ | このプロジェクトのルート |
 | 環境変数・DB | 不要 |
+
+現在の公開環境は上記設定で `main` ブランチを配信しています。[NeoShowcaseの管理画面](https://ns.trap.jp/apps/4e35b95bef275ce8e95bca)からビルド・公開URLを確認できます。
 
 別のリポジトリのサブディレクトリに置く場合は、ビルドコマンドを `cd automaton-visualizer && npm run build`、成果物のパスを `automaton-visualizer/dist` とします。ダッシュボードの項目名やパスの指定方式は利用中のNeoShowcaseのバージョンで確認してください。
 
@@ -124,4 +128,5 @@ ASCIIの `S -a-> A`、`S --a--> A`、Unicodeの `S ─a→ A` に対応。表示
 - PNG：実際の出力を確認し、1600×1040、白背景、出発矢印、終了状態の二重丸を確認。`output/example-nfa.png` は出力例、`output/preview.png` は画面プレビュー。
 - 複数保存：複製・名前変更・図の独立した編集・切り替え・再読み込みによる復元・削除と復元を確認。2個の名前と図を含む1600×2640 PNGを実際に生成し、`output/collection-example.png` に出力例を保存。
 - Docker：設定ファイルは用意済み。ローカルDockerデーモンへのアクセス権がないため、コンテナのビルド・起動は未検証。
-- GitHub：[fken57/automaton-visualizer](https://github.com/fken57/automaton-visualizer) にコードを保存。NeoShowcaseの本番デプロイは進行中。
+- GitHub：[fken57/automaton-visualizer](https://github.com/fken57/automaton-visualizer) にコードを保存。
+- NeoShowcase：2026-10-05に静的コマンド方式で本番ビルド成功・公開済み。本番URLで複数保存・再読み込み・名前付きの1600×2640 PNG生成・矢印記法への切り替え・`aba` の受理判定を確認。出力例は `output/deployed-collection.png`、公開画面は `output/deployed-site.png`（いずれもGit対象外）。
