@@ -1,3 +1,5 @@
+import { layout } from './layout.js';
+export { layout } from './layout.js';
 export const EPSILON = 'ε';
 const tokenPattern = /^[\p{L}\p{N}_#.$ε-]+$/u;
 export const validToken = value => typeof value === 'string' && tokenPattern.test(value) && value.length <= 32;
@@ -35,23 +37,10 @@ export function parseNotation(text, kind) {
 export function formatNotation(model, kind) {
   return model.transitions.map(t => kind === 'triples' ? `(${t.from},${t.symbol},${t.to})` : `${t.from} ─${t.symbol}→ ${t.to}`).join('\n');
 }
-export function layout(states, style = 'circle') {
-  const n = states.length;
-  return states.map((s, i) => {
-    if (n === 1) return { ...s, x: 400, y: 245 };
-    if (n <= 4 && style === 'circle') {
-      const places = n === 2 ? [[235, 245], [565, 245]] : n === 3 ? [[175, 245], [400, 245], [625, 245]] : [[230, 155], [560, 155], [230, 355], [560, 355]];
-      return { ...s, x: places[i][0], y: places[i][1] };
-    }
-    const cols = Math.ceil(Math.sqrt(n));
-    const rows = Math.ceil(n / cols);
-    return { ...s, x: 130 + (i % cols) * (540 / Math.max(1, cols - 1)), y: 125 + Math.floor(i / cols) * (270 / Math.max(1, rows - 1)) };
-  });
-}
 export function applyTransitions(model, transitions) {
   const names = [...new Set(transitions.flatMap(t => [t.from, t.to]))];
   const added = names.filter(name => !model.states.some(s => s.id === name));
-  const states = added.length ? layout([...model.states, ...added.map(id => ({ id }))]) : model.states;
+  const states = added.length ? layout([...model.states, ...added.map(id => ({ id }))], transitions, model.start) : model.states;
   return { ...model, states, alphabet: [...new Set([...model.alphabet, ...transitions.map(t => t.symbol).filter(x => x !== EPSILON)])], transitions: uniqueTransitions(transitions) };
 }
 export function validateModel(model) {
@@ -62,9 +51,10 @@ export function validateModel(model) {
   if (!ids.includes(model.start) || !model.finals.every(id => ids.includes(id))) throw new Error('出発・終了状態は状態集合に含めてください。');
   if (!model.alphabet.every(validToken) || model.alphabet.includes(EPSILON)) throw new Error('終端記号が不正です。εは入力記号集合には含めません。');
   if (!model.transitions.every(t => ids.includes(t.from) && ids.includes(t.to) && (model.alphabet.includes(t.symbol) || t.symbol === EPSILON))) throw new Error('遷移の状態または記号が定義されていません。');
+  const fallback = model.states.some(s => !Number.isFinite(s.x) || !Number.isFinite(s.y)) ? layout(model.states, model.transitions, model.start) : model.states;
   return {
     title: typeof model.title === 'string' ? model.title.slice(0, 80) : '無題のオートマトン',
-    states: model.states.map((s, i) => ({ id: s.id, x: Number.isFinite(s.x) ? Math.max(95, Math.min(705, s.x)) : layout(model.states)[i].x, y: Number.isFinite(s.y) ? Math.max(115, Math.min(400, s.y)) : layout(model.states)[i].y })),
+    states: model.states.map((s, i) => ({ id: s.id, x: Number.isFinite(s.x) ? Math.max(95, Math.min(50000, s.x)) : fallback[i].x, y: Number.isFinite(s.y) ? Math.max(115, Math.min(50000, s.y)) : fallback[i].y })),
     alphabet: [...new Set(model.alphabet)], start: model.start, finals: [...new Set(model.finals)], transitions: uniqueTransitions(model.transitions)
   };
 }
@@ -104,8 +94,9 @@ export function simulate(model, input) {
   return { steps, symbols, accepted: current.some(s => model.finals.includes(s)) };
 }
 export const examples = {
-  nfa: { title: 'aa⁺ または ab⁺ を受理する NFA', states: layout(['S', 'A', 'B', '#'].map(id => ({ id }))), alphabet: ['a', 'b'], start: 'S', finals: ['#'], transitions: parseNotation('(S,a,A)(S,a,B)(A,a,A)(A,a,#)(B,b,B)(B,b,#)', 'triples') },
-  dfa: { title: 'a(ba)* を受理する DFA', states: layout(['S', 'A'].map(id => ({ id }))), alphabet: ['a', 'b'], start: 'S', finals: ['A'], transitions: parseNotation('(S,a,A)(A,b,S)', 'triples') },
-  binary: { title: '1 が偶数個の二進文字列', states: layout(['q0', 'q1'].map(id => ({ id }))), alphabet: ['0', '1'], start: 'q0', finals: ['q0'], transitions: parseNotation('(q0,0,q0)(q0,1,q1)(q1,0,q1)(q1,1,q0)', 'triples') },
+  nfa: { title: 'aa⁺ または ab⁺ を受理する NFA', states: ['S', 'A', 'B', '#'].map(id => ({ id })), alphabet: ['a', 'b'], start: 'S', finals: ['#'], transitions: parseNotation('(S,a,A)(S,a,B)(A,a,A)(A,a,#)(B,b,B)(B,b,#)', 'triples') },
+  dfa: { title: 'a(ba)* を受理する DFA', states: ['S', 'A'].map(id => ({ id })), alphabet: ['a', 'b'], start: 'S', finals: ['A'], transitions: parseNotation('(S,a,A)(A,b,S)', 'triples') },
+  binary: { title: '1 が偶数個の二進文字列', states: ['q0', 'q1'].map(id => ({ id })), alphabet: ['0', '1'], start: 'q0', finals: ['q0'], transitions: parseNotation('(q0,0,q0)(q0,1,q1)(q1,0,q1)(q1,1,q0)', 'triples') },
   empty: { title: '新しいオートマトン', states: [{ id: 'S', x: 230, y: 245 }], alphabet: ['a', 'b'], start: 'S', finals: [], transitions: [] }
 };
+for (const example of Object.values(examples)) example.states = layout(example.states, example.transitions, example.start);

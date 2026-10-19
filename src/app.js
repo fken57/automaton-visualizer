@@ -1,5 +1,6 @@
 import { EPSILON, tokens, validToken, validateModel, examples, layout, applyTransitions, parseNotation, formatNotation, automatonType, simulate, escapeXML as e } from './model.js';
 import { graphContent, exportSVG, exportCollectionSVG } from './graph.js';
+import { graphBounds } from './layout.js';
 import { LIBRARY_SCHEMA, MAX_AUTOMATA, createLibrary, newEntry, validateLibrary, updateEntry } from './library.js';
 
 const $ = id => document.getElementById(id);
@@ -89,6 +90,8 @@ function render() {
 }
 function renderGraph() {
   const active = simulation?.steps[stepIndex];
+  const bounds = drag?.bounds || graphBounds(model.states);
+  $('graph').setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
   $('graph').innerHTML = graphContent(model, { selected, activeStates: active?.states, activeEdges: active?.edges, edgeSource });
 }
 function renderSelection() {
@@ -144,7 +147,8 @@ function setTool(next) {
 function addState(point) {
   let n = 0; while (model.states.some(s => s.id === `q${n}`)) n++;
   const id = `q${n}`; selected = { state: id };
-  commit({ ...model, states: [...model.states, { id, x: Math.max(95, Math.min(705, point.x)), y: Math.max(115, Math.min(400, point.y)) }] });
+  const bounds = graphBounds(model.states);
+  commit({ ...model, states: [...model.states, { id, x: Math.max(95, Math.min(bounds.width - 130, point.x)), y: Math.max(115, Math.min(bounds.height - 130, point.y)) }] });
 }
 function graphPoint(event) { const p = new DOMPoint(event.clientX, event.clientY).matrixTransform($('graph').getScreenCTM().inverse()); return { x: p.x, y: p.y }; }
 function openEdge(from, to) {
@@ -174,7 +178,8 @@ async function savePNG(batch = false) {
       const img = new Image();
       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('図の画像変換に失敗しました。')); img.src = url; });
       const canvas = document.createElement('canvas'); canvas.width = output.width; canvas.height = output.height;
-      canvas.getContext('2d').drawImage(img, 0, 0);
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff'; context.fillRect(0, 0, output.width, output.height); context.drawImage(img, 0, 0);
       const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('PNG保存に失敗しました。');
       $('png-preview').src = canvas.toDataURL('image/png'); $('preview-png').hidden = false;
@@ -190,8 +195,10 @@ $('states-input').addEventListener('blur', event => {
     const names = tokens(event.target.value);
     if (!names.length || names.length > 100 || !names.every(validToken) || new Set(names).size !== names.length) throw new Error('重複しない状態名を1〜100個入力してください（各32文字以内）。');
     const added = names.some(id => !model.states.some(s => s.id === id));
-    let states = names.map(id => model.states.find(s => s.id === id) || { id }); if (added) states = layout(states);
-    commit({ ...model, states, start: names.includes(model.start) ? model.start : names[0], finals: model.finals.filter(id => names.includes(id)), transitions: model.transitions.filter(t => names.includes(t.from) && names.includes(t.to)) });
+    let states = names.map(id => model.states.find(s => s.id === id) || { id });
+    const start = names.includes(model.start) ? model.start : names[0], transitions = model.transitions.filter(t => names.includes(t.from) && names.includes(t.to));
+    if (added) states = layout(states, transitions, start);
+    commit({ ...model, states, start, finals: model.finals.filter(id => names.includes(id)), transitions });
   } catch (error) { toast(error.message, true); event.target.value = model.states.map(s => s.id).join(', '); }
 });
 $('alphabet-input').addEventListener('blur', event => {
@@ -228,7 +235,7 @@ $('cancel-edge').addEventListener('click', cancelEdge);
 $('edge-dialog').addEventListener('cancel', () => { edgeSource = null; renderGraph(); });
 $('undo').addEventListener('click', () => travel('undo')); $('redo').addEventListener('click', () => travel('redo'));
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
-$('auto-layout').addEventListener('click', () => commit({ ...model, states: layout(model.states) }));
+$('auto-layout').addEventListener('click', () => commit({ ...model, states: layout(model.states, model.transitions, model.start) }));
 $('graph').addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   const node = event.target.closest('[data-state]'), edge = event.target.closest('[data-edge]');
@@ -240,7 +247,7 @@ $('graph').addEventListener('pointerdown', event => {
     } else {
       selected = { state: id }; renderSelection();
       const state = model.states.find(s => s.id === id), p = graphPoint(event);
-      drag = { id, before: clone(model), pointerId: event.pointerId, offsetX: state.x - p.x, offsetY: state.y - p.y };
+      drag = { id, before: clone(model), bounds: graphBounds(model.states), pointerId: event.pointerId, offsetX: state.x - p.x, offsetY: state.y - p.y };
       $('graph').setPointerCapture(event.pointerId); renderGraph();
     }
   } else if (edge) { selected = { edge: Number(edge.dataset.edge) }; renderGraph(); renderSelection(); }
@@ -250,7 +257,7 @@ $('graph').addEventListener('pointerdown', event => {
 $('graph').addEventListener('pointermove', event => {
   if (!drag) return;
   const p = graphPoint(event), state = model.states.find(s => s.id === drag.id);
-  state.x = Math.max(95, Math.min(705, p.x + drag.offsetX)); state.y = Math.max(115, Math.min(400, p.y + drag.offsetY)); renderGraph();
+  state.x = Math.max(95, Math.min(drag.bounds.width - 130, p.x + drag.offsetX)); state.y = Math.max(115, Math.min(drag.bounds.height - 130, p.y + drag.offsetY)); renderGraph();
 });
 function finishDrag(event) {
   if (!drag) return;
