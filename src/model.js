@@ -40,7 +40,7 @@ export function formatNotation(model, kind) {
 export function applyTransitions(model, transitions) {
   const names = [...new Set(transitions.flatMap(t => [t.from, t.to]))];
   const added = names.filter(name => !model.states.some(s => s.id === name));
-  const states = added.length ? layout([...model.states, ...added.map(id => ({ id }))], transitions, model.start) : model.states;
+  const states = added.length ? layout([...model.states, ...added.map(id => ({ id }))], transitions, model.start, model.layoutMode) : model.states;
   return { ...model, states, alphabet: [...new Set([...model.alphabet, ...transitions.map(t => t.symbol).filter(x => x !== EPSILON)])], transitions: uniqueTransitions(transitions) };
 }
 export function validateModel(model) {
@@ -51,8 +51,11 @@ export function validateModel(model) {
   if (!ids.includes(model.start) || !model.finals.every(id => ids.includes(id))) throw new Error('出発・終了状態は状態集合に含めてください。');
   if (!model.alphabet.every(validToken) || model.alphabet.includes(EPSILON)) throw new Error('終端記号が不正です。εは入力記号集合には含めません。');
   if (!model.transitions.every(t => ids.includes(t.from) && ids.includes(t.to) && (model.alphabet.includes(t.symbol) || t.symbol === EPSILON))) throw new Error('遷移の状態または記号が定義されていません。');
-  const fallback = model.states.some(s => !Number.isFinite(s.x) || !Number.isFinite(s.y)) ? layout(model.states, model.transitions, model.start) : model.states;
+  const layoutMode = model.layoutMode === undefined ? 'standard' : model.layoutMode;
+  if (!['standard', 'free'].includes(layoutMode)) throw new Error('配置モードが正しくありません。');
+  const fallback = model.states.some(s => !Number.isFinite(s.x) || !Number.isFinite(s.y)) ? layout(model.states, model.transitions, model.start, layoutMode) : model.states;
   return {
+    layoutMode,
     title: typeof model.title === 'string' ? model.title.slice(0, 80) : '無題のオートマトン',
     states: model.states.map((s, i) => ({ id: s.id, x: Number.isFinite(s.x) ? Math.max(95, Math.min(50000, s.x)) : fallback[i].x, y: Number.isFinite(s.y) ? Math.max(115, Math.min(50000, s.y)) : fallback[i].y })),
     alphabet: [...new Set(model.alphabet)], start: model.start, finals: [...new Set(model.finals)], transitions: uniqueTransitions(model.transitions)
@@ -99,4 +102,7 @@ export const examples = {
   binary: { title: '1 が偶数個の二進文字列', states: ['q0', 'q1'].map(id => ({ id })), alphabet: ['0', '1'], start: 'q0', finals: ['q0'], transitions: parseNotation('(q0,0,q0)(q0,1,q1)(q1,0,q1)(q1,1,q0)', 'triples') },
   empty: { title: '新しいオートマトン', states: [{ id: 'S', x: 230, y: 245 }], alphabet: ['a', 'b'], start: 'S', finals: [], transitions: [] }
 };
-for (const example of Object.values(examples)) example.states = layout(example.states, example.transitions, example.start);
+for (const example of Object.values(examples)) {
+  example.layoutMode = 'standard';
+  example.states = layout(example.states, example.transitions, example.start);
+}

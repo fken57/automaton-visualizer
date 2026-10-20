@@ -72,7 +72,7 @@ test('100状態でも円を重ねず、保存・再読込・単体/まとめSVG�
     assert.deepEqual(validateModel(JSON.parse(JSON.stringify(model))), model);
     const bounds = graphBounds(nodes);
     assert.match(exportSVG(model), new RegExp(`viewBox="0 0 ${bounds.width} ${bounds.height}"`));
-    assert.match(exportCollectionSVG([model]).svg, new RegExp(`<svg y="120"[^>]+viewBox="0 0 ${bounds.width} ${bounds.height}"`));
+    assert.match(exportCollectionSVG([model]).svg, new RegExp(`<svg[^>]+y="120"[^>]+viewBox="0 0 ${bounds.width} ${bounds.height}"`));
   }
 });
 

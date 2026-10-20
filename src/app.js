@@ -1,5 +1,5 @@
 import { EPSILON, tokens, validToken, validateModel, examples, layout, applyTransitions, parseNotation, formatNotation, automatonType, simulate, escapeXML as e } from './model.js';
-import { graphContent, exportSVG, exportCollectionSVG } from './graph.js';
+import { graphContent, exportSVG, exportDimensions, exportCollectionSVG } from './graph.js';
 import { graphBounds } from './layout.js';
 import { LIBRARY_SCHEMA, MAX_AUTOMATA, createLibrary, newEntry, validateLibrary, updateEntry } from './library.js';
 
@@ -75,6 +75,7 @@ function render() {
   if (selected?.edge >= model.transitions.length) selected = null;
   const ids = model.states.map(s => s.id);
   $('project-title').value = model.title;
+  $('layout-mode').value = model.layoutMode;
   $('states-input').value = ids.join(', ');
   $('alphabet-input').value = model.alphabet.join(', ');
   $('start-input').innerHTML = optionList(ids, model.start);
@@ -90,8 +91,11 @@ function render() {
 }
 function renderGraph() {
   const active = simulation?.steps[stepIndex];
-  const bounds = drag?.bounds || graphBounds(model.states);
+  const bounds = drag?.bounds || graphBounds(model.states, model.layoutMode);
   $('graph').setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
+  $('canvas-area').classList.toggle('free-layout', model.layoutMode === 'free');
+  $('graph').style.setProperty('--graph-width', `${bounds.width}px`);
+  $('graph').style.setProperty('--graph-height', `${bounds.height}px`);
   $('graph').innerHTML = graphContent(model, { selected, activeStates: active?.states, activeEdges: active?.edges, edgeSource });
 }
 function renderSelection() {
@@ -147,7 +151,7 @@ function setTool(next) {
 function addState(point) {
   let n = 0; while (model.states.some(s => s.id === `q${n}`)) n++;
   const id = `q${n}`; selected = { state: id };
-  const bounds = graphBounds(model.states);
+  const bounds = graphBounds(model.states, model.layoutMode);
   commit({ ...model, states: [...model.states, { id, x: Math.max(95, Math.min(bounds.width - 130, point.x)), y: Math.max(115, Math.min(bounds.height - 130, point.y)) }] });
 }
 function graphPoint(event) { const p = new DOMPoint(event.clientX, event.clientY).matrixTransform($('graph').getScreenCTM().inverse()); return { x: p.x, y: p.y }; }
@@ -171,7 +175,7 @@ async function savePNG(batch = false) {
   const button = batch ? $('export-all-png') : $('export-png'); button.disabled = true;
   try {
     persist();
-    const output = batch ? exportCollectionSVG(library.items.map(item => item.model)) : { svg: exportSVG(model), width: 1600, height: 1040 };
+    const output = batch ? exportCollectionSVG(library.items.map(item => item.model)) : { svg: exportSVG(model), ...exportDimensions(model) };
     await document.fonts.ready;
     const url = URL.createObjectURL(new Blob([output.svg], { type: 'image/svg+xml;charset=utf-8' }));
     try {
@@ -197,7 +201,7 @@ $('states-input').addEventListener('blur', event => {
     const added = names.some(id => !model.states.some(s => s.id === id));
     let states = names.map(id => model.states.find(s => s.id === id) || { id });
     const start = names.includes(model.start) ? model.start : names[0], transitions = model.transitions.filter(t => names.includes(t.from) && names.includes(t.to));
-    if (added) states = layout(states, transitions, start);
+    if (added) states = layout(states, transitions, start, model.layoutMode);
     commit({ ...model, states, start, finals: model.finals.filter(id => names.includes(id)), transitions });
   } catch (error) { toast(error.message, true); event.target.value = model.states.map(s => s.id).join(', '); }
 });
@@ -235,7 +239,11 @@ $('cancel-edge').addEventListener('click', cancelEdge);
 $('edge-dialog').addEventListener('cancel', () => { edgeSource = null; renderGraph(); });
 $('undo').addEventListener('click', () => travel('undo')); $('redo').addEventListener('click', () => travel('redo'));
 document.querySelectorAll('[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
-$('auto-layout').addEventListener('click', () => commit({ ...model, states: layout(model.states, model.transitions, model.start) }));
+$('auto-layout').addEventListener('click', () => commit({ ...model, states: layout(model.states, model.transitions, model.start, model.layoutMode) }));
+$('layout-mode').addEventListener('change', event => {
+  const layoutMode = event.target.value;
+  commit({ ...model, layoutMode, states: layout(model.states, model.transitions, model.start, layoutMode) });
+});
 $('graph').addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   const node = event.target.closest('[data-state]'), edge = event.target.closest('[data-edge]');
@@ -247,7 +255,7 @@ $('graph').addEventListener('pointerdown', event => {
     } else {
       selected = { state: id }; renderSelection();
       const state = model.states.find(s => s.id === id), p = graphPoint(event);
-      drag = { id, before: clone(model), bounds: graphBounds(model.states), pointerId: event.pointerId, offsetX: state.x - p.x, offsetY: state.y - p.y };
+      drag = { id, before: clone(model), bounds: graphBounds(model.states, model.layoutMode), pointerId: event.pointerId, offsetX: state.x - p.x, offsetY: state.y - p.y };
       $('graph').setPointerCapture(event.pointerId); renderGraph();
     }
   } else if (edge) { selected = { edge: Number(edge.dataset.edge) }; renderGraph(); renderSelection(); }
@@ -292,7 +300,12 @@ $('simulation-output').addEventListener('click', event => { const b = event.targ
 $('word-input').addEventListener('input', () => { if (simulation) { simulation = null; renderSimulation(); renderGraph(); } });
 $('load-example').addEventListener('click', () => $('confirm-dialog').showModal());
 $('cancel-example').addEventListener('click', () => $('confirm-dialog').close());
-$('confirm-example').addEventListener('click', () => { drafts = {}; selected = null; $('confirm-dialog').close(); commit(clone(examples[$('example-select').value])); render(); toast('サンプルを読み込みました。'); });
+$('confirm-example').addEventListener('click', () => {
+  drafts = {}; selected = null; $('confirm-dialog').close();
+  const next = clone(examples[$('example-select').value]); next.layoutMode = model.layoutMode;
+  next.states = layout(next.states, next.transitions, next.start, next.layoutMode);
+  commit(next); render(); toast('サンプルを読み込みました。');
+});
 $('export-png').addEventListener('click', () => savePNG());
 $('export-all-png').addEventListener('click', () => savePNG(true));
 $('automaton-list').addEventListener('click', event => { const button = event.target.closest('[data-automaton]'); if (button) switchAutomaton(button.dataset.automaton); });

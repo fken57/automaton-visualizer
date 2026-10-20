@@ -1,9 +1,9 @@
 // Keep space for circles, labels, self-loops and the incoming start arrow.
-export function graphBounds(states) {
-  return { width: Math.max(800, ...states.map(s => s.x + 130)), height: Math.max(520, ...states.map(s => s.y + 130)) };
+export function graphBounds(states, mode = 'standard') {
+  return { width: Math.max(mode === 'free' ? 260 : 800, ...states.map(s => s.x + 130)), height: Math.max(mode === 'free' ? 255 : 520, ...states.map(s => s.y + 130)) };
 }
 
-export function layout(states, transitions = [], start = states[0]?.id) {
+export function layout(states, transitions = [], start = states[0]?.id, mode = 'standard') {
   if (!states.length) return [];
   const neighbors = new Map(states.map(s => [s.id, new Set()]));
   for (const { from, to } of transitions) {
@@ -52,10 +52,10 @@ export function layout(states, transitions = [], start = states[0]?.id) {
       const score = crossings();
       if (score < bestScore) { best = layers.map(layer => [...layer]); bestScore = score; }
     }
-    const height = Math.max(240, (Math.max(...best.map(layer => layer.length)) - 1) * 180);
-    const width = Math.max(540, (best.length - 1) * 180);
+    const height = Math.max(mode === 'free' ? 0 : 240, (Math.max(...best.map(layer => layer.length)) - 1) * 180);
+    const width = Math.max(mode === 'free' ? 0 : 540, (best.length - 1) * 180);
     best.forEach((layer, col) => layer.forEach((id, row) => positions.set(id, {
-      x: best.length === 1 ? 400 : 130 + col * width / (best.length - 1),
+      x: best.length === 1 ? mode === 'free' ? 130 : 400 : 130 + col * width / (best.length - 1),
       y: top + height / 2 + (row - (layer.length - 1) / 2) * 180
     })));
     top += height + 240;

@@ -42,7 +42,8 @@
         <div class="panel canvas-panel">
           <div class="panel-heading canvas-heading"><div><span class="section-number">02</span><h2>状態遷移図</h2><span id="type-badge" class="badge">NFA</span></div><div class="history-actions"><button id="undo" class="icon-button" title="元に戻す (Ctrl+Z)" aria-label="元に戻す">↶</button><button id="redo" class="icon-button" title="やり直す (Ctrl+Shift+Z)" aria-label="やり直す">↷</button></div></div>
           <div class="canvas-toolbar"><div class="tools" role="group" aria-label="図の編集ツール"><button class="tool active" data-tool="move" title="選択・移動"><span>↖</span> 移動</button><button class="tool" data-tool="state"><span>⊕</span> 状態</button><button class="tool" data-tool="edge"><span>↗</span> 遷移</button></div><button id="auto-layout" class="button compact">▦ 自動配置</button></div>
-          <div class="canvas-area"><svg id="graph" viewBox="0 0 800 520" aria-label="オートマトン状態遷移図"></svg><div id="tool-hint" class="canvas-hint">状態をドラッグして移動 · 空白をダブルクリックして追加</div><div id="graph-stats" class="graph-stats"></div></div>
+          <label class="layout-control" for="layout-mode"><span>配置モード</span><select id="layout-mode"><option value="standard">標準</option><option value="free">自由な縦横比</option></select><small>変更すると自動配置。大きな図は枠内をスクロールできます。</small></label>
+          <div id="canvas-area" class="canvas-area"><svg id="graph" viewBox="0 0 800 520" aria-label="オートマトン状態遷移図"></svg><div id="tool-hint" class="canvas-hint">状態をドラッグして移動 · 空白をダブルクリックして追加</div><div id="graph-stats" class="graph-stats"></div></div>
           <div id="selection-panel" class="selection-panel"></div>
           <div class="canvas-footer"><div><span>→○ 出発状態</span><span>◎ 終了状態</span></div><button id="preview-png" class="text-button" hidden>前回のPNGを見る ↗</button></div>
         </div>

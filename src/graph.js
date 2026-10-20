@@ -1,7 +1,7 @@
 import { escapeXML as e } from './model.js';
 import { graphBounds } from './layout.js';
-export function edgeGeometry(from, to, reverse = false, states = [], label = '') {
-  const bounds = graphBounds(states.length ? states : [from, to]);
+export function edgeGeometry(from, to, reverse = false, states = [], label = '', mode = 'standard') {
+  const bounds = graphBounds(states.length ? states : [from, to], mode);
   const obstacles = states.filter(s => s.id !== from.id && s.id !== to.id);
   const score = g => {
     let penalty = 0;
@@ -66,7 +66,7 @@ export function graphContent(model, { selected = null, activeStates = [], active
   const edgeHTML = [...groups.values()].map(t => {
     const from = model.states.find(s => s.id === t.from), to = model.states.find(s => s.id === t.to);
     const label = t.symbols.join(', ');
-    const g = edgeGeometry(from, to, groups.has(JSON.stringify([t.to, t.from])), model.states, label);
+    const g = edgeGeometry(from, to, groups.has(JSON.stringify([t.to, t.from])), model.states, label, model.layoutMode);
     const selectedEdge = !exporting && t.indices.includes(selected?.edge), active = !exporting && t.indices.some(i => activeEdges.includes(i));
     const color = exporting ? '#202c29' : active || selectedEdge ? '#24715c' : '#596c63';
     return `<g data-edge="${t.indices[0]}" class="graph-edge" role="button" tabindex="0" aria-label="${e(`${t.from} から ${t.to}、記号 ${label}`)}"><path d="${g.d}" fill="none" stroke="transparent" stroke-width="18"/><path d="${g.d}" fill="none" stroke="${color}" stroke-width="${active || selectedEdge ? 3 : 2}" marker-end="url(#${markerId})"/><rect x="${g.x - Math.max(16, label.length * 6)}" y="${g.y - 13}" width="${Math.max(32, label.length * 12)}" height="25" rx="7" fill="${exporting ? '#ffffff' : '#fbfcfa'}"/><text x="${g.x}" y="${g.y + 5}" fill="${color}" text-anchor="middle" font-size="18" font-family="sans-serif">${e(label)}</text></g>`;
@@ -79,22 +79,35 @@ export function graphContent(model, { selected = null, activeStates = [], active
   }).join('');
   return `<defs><marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 9 5 L 1 9" fill="none" stroke="${exporting ? '#202c29' : '#596c63'}" stroke-width="1.6"/></marker></defs>${edgeHTML}${nodeHTML}`;
 }
+function imageDimensions(width, height, scale = 2) {
+  // Bound both the longest side and total pixels before allocating a PNG canvas.
+  scale = Math.min(scale, 16384 / Math.max(width, height), Math.sqrt(26400000 / (width * height)));
+  return { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+}
+export function exportDimensions(model) {
+  const bounds = graphBounds(model.states, model.layoutMode);
+  return model.layoutMode === 'free' ? imageDimensions(bounds.width, bounds.height) : { width: 1600, height: 1040 };
+}
 export function exportSVG(model) {
-  const { width, height } = graphBounds(model.states);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 ${width} ${height}" style="background:white"><rect width="${width}" height="${height}" fill="white"/>${graphContent(model, { exporting: true })}</svg>`;
+  const bounds = graphBounds(model.states, model.layoutMode), output = exportDimensions(model);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${output.width}" height="${output.height}" viewBox="0 0 ${bounds.width} ${bounds.height}" style="background:white"><rect width="${bounds.width}" height="${bounds.height}" fill="white"/>${graphContent(model, { exporting: true })}</svg>`;
 }
 export function exportCollectionSVG(models) {
   if (!models.length || models.length > 50) throw new Error('まとめて出力できるオートマトンは1〜50個です。');
   const columns = models.length > 10 ? 2 : 1;
-  const scale = columns === 1 ? 2 : 1;
-  const width = columns * 800, height = Math.ceil(models.length / columns) * 660;
+  const sizes = models.map(model => model.layoutMode === 'free' ? graphBounds(model.states, 'free') : { width: 800, height: 520 });
+  const columnWidth = Math.max(800, ...sizes.map(size => size.width));
+  const rows = Array.from({ length: Math.ceil(models.length / columns) }, (_, i) => Math.max(...sizes.slice(i * columns, (i + 1) * columns).map(size => size.height)) + 140);
+  const offsets = [0]; rows.forEach(height => offsets.push(offsets.at(-1) + height));
+  const width = columns * columnWidth, height = offsets.at(-1), scale = columns === 1 ? 2 : 1;
+  const output = models.some(model => model.layoutMode === 'free') ? imageDimensions(width, height, scale) : { width: width * scale, height: height * scale };
   const panels = models.map((model, index) => {
     const chars = [...model.title];
     const lines = Array.from({ length: Math.max(1, Math.ceil(chars.length / 28)) }, (_, line) => chars.slice(line * 28, (line + 1) * 28).join(''));
-    const x = (index % columns) * 800, y = Math.floor(index / columns) * 660;
+    const row = Math.floor(index / columns), x = (index % columns) * columnWidth, y = offsets[row], size = sizes[index];
     const title = lines.map((line, i) => `<tspan x="40" y="${45 + i * 31}">${e(line)}</tspan>`).join('');
-    const bounds = graphBounds(model.states);
-    return `<g transform="translate(${x},${y})"><text font-family="sans-serif" font-size="24" font-weight="600" fill="#202c29">${title}</text><svg y="120" width="800" height="520" viewBox="0 0 ${bounds.width} ${bounds.height}">${graphContent(model, { exporting: true, markerId: `collection-${index}-arrow` })}</svg>${index < models.length - columns ? '<path d="M 30 655 H 770" stroke="#e2e7de"/>' : ''}</g>`;
+    const bounds = graphBounds(model.states, model.layoutMode);
+    return `<g transform="translate(${x},${y})"><text font-family="sans-serif" font-size="24" font-weight="600" fill="#202c29">${title}</text><svg x="${(columnWidth - size.width) / 2}" y="120" width="${size.width}" height="${size.height}" viewBox="0 0 ${bounds.width} ${bounds.height}">${graphContent(model, { exporting: true, markerId: `collection-${index}-arrow` })}</svg>${row < rows.length - 1 ? `<path d="M 30 ${rows[row] - 5} H ${columnWidth - 30}" stroke="#e2e7de"/>` : ''}</g>`;
   }).join('');
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="white"/>${panels}</svg>`, width: width * scale, height: height * scale };
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${output.width}" height="${output.height}" viewBox="0 0 ${width} ${height}"><rect width="${width}" height="${height}" fill="white"/>${panels}</svg>`, ...output };
 }
